@@ -151,6 +151,7 @@ def backup(path):
         if fi.hash is not None and hash != fi.hash:
             print >>sys.stderr, "Warning: file %s had same mtime and size, but hash did not match" % fi.name
         fi.hash = hash
+    print "Reading blobs"
     blobdir = s3.list("shaback.hewgill.com", "?prefix=blob/")
     hashlen = hashlib.sha1().digest_size * 2
     blobs = frozenset([x['Key'][5:5+hashlen] for x in blobdir['Contents']])

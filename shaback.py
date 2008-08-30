@@ -7,7 +7,7 @@ import stat
 import sys
 import tempfile
 import time
-import xml.dom.minidom
+import xml.sax
 
 from xml.sax import saxutils
 
@@ -42,16 +42,16 @@ class FileInfo:
             self.mode = st.st_mode
             self.uid = st.st_uid
             self.gid = st.st_gid
-        elif 'xml' in args:
-            data = dict([(x, args['xml'].getElementsByTagName(x)[0].firstChild.data) for x in ("name", "size", "mtime", "mode", "uid", "gid", "hash")])
-            self.name = data['name']
-            self.size = int(data['size'])
-            self.mtime = int(data['mtime'])
-            self.mode = int(data['mode'])
-            self.uid = int(data['uid'])
-            self.gid = int(data['gid'])
-            self.hash = data['hash']
+    def saxHandler(self, name, data):
+        if   name == "name" : self.name  = data
+        elif name == "size" : self.size  = int(data)
+        elif name == "mtime": self.mtime = int(data)
+        elif name == "mode" : self.modde = int(data) # octal!
+        elif name == "uid"  : self.uid   = int(data)
+        elif name == "gid"  : self.gid   = int(data)
+        elif name == "hash" : self.hash  = data
         else:
+            print >>sys.stderr, "Unknown field:", name
             assert False
     def toxml(self):
         return (
@@ -87,6 +87,26 @@ def putpipe(name, cmd):
     if tf is not None:
         tf.close()
 
+class RefsHandler(xml.sax.ContentHandler):
+    def __init__(self, files):
+        self.files = files
+        self.element = None
+        self.fileinfo = None
+        self.text = ""
+    def startElement(self, name, attrs):
+        self.element = name
+        if name == "fileinfo":
+            self.fileinfo = FileInfo()
+            self.element = None
+    def endElement(self, name):
+        if name == "fileinfo":
+            self.files.append(self.fileinfo)
+            self.fileinfo = None
+        self.element = None
+    def characters(self, content):
+        if self.fileinfo is not None and self.element is not None:
+            self.fileinfo.saxHandler(self.element, content)
+
 def walktree(base, callback):
     for f in os.listdir(base):
         path = os.path.join(base, f)
@@ -105,11 +125,10 @@ def backup(path):
     start = time.localtime(time.time())
     lastfiles = {}
     try:
-        doc = xml.dom.minidom.parse(os.path.join(refpath, refname+".xml"))
-        for fi in doc.getElementsByTagName("fileinfo"):
-            fn = fi.getElementsByTagName("name")[0].firstChild.data
-            lastfiles[fn] = FileInfo(xml = fi)
-        doc.unlink()
+        files = []
+        xml.sax.parse(os.path.join(refpath, refname+".xml"), RefsHandler(files))
+        for fi in files:
+            lastfiles[fi.name] = fi
     except IOError:
         pass
     print "Scanning files"
@@ -172,15 +191,14 @@ def fsck():
             shutil.copyfileobj(f, p)
             p.close()
             try:
-                doc = xml.dom.minidom.parse(tfn)
-            except:
+                files = []
+                xml.sax.parse(tfn, RefsHandler(files))
+            except xml.sax.SAXException:
+                print "Warning: failed to read refs file:", r
                 continue
-            for fi in doc.getElementsByTagName("fileinfo"):
-                hash = fi.getElementsByTagName("hash")[0].firstChild.data
-                if hash not in blobs:
-                    name = fi.getElementsByTagName("name")[0].firstChild.data
-                    print "Blob %s referenced from %s (%s) not found!" % (hash, r, name)
-            doc.unlink()
+            for fi in files:
+                if fi.hash not in blobs:
+                    print "Blob %s referenced from %s (%s) not found!" % (fi.hash, r, fi.name)
         finally:
             os.close(tfh)
             os.unlink(tfn)
@@ -191,6 +209,7 @@ def gc():
     hashlen = hashlib.sha1().digest_size * 2
     blobs = dict([(x['Key'][5:5+hashlen], x['Key']) for x in blobdir['Contents']])
     print "%d blobs found" % len(blobs)
+    failedrefs = False
     print "Reading refs"
     refsdir = s3.list("shaback.hewgill.com", "?prefix=refs/")
     for r in [x['Key'] for x in refsdir['Contents']]:
@@ -202,20 +221,23 @@ def gc():
             shutil.copyfileobj(f, p)
             p.close()
             try:
-                doc = xml.dom.minidom.parse(tfn)
-            except:
+                files = []
+                xml.sax.parse(tfn, RefsHandler(files))
+            except xml.sax.SAXException:
+                failedrefs = True
                 continue
-            for fi in doc.getElementsByTagName("fileinfo"):
-                hash = fi.getElementsByTagName("hash")[0].firstChild.data
-                if hash in blobs:
-                    del blobs[hash]
-            doc.unlink()
+            for fi in files:
+                if fi.hash in blobs:
+                    del blobs[fi.hash]
         finally:
             os.close(tfh)
             os.unlink(tfn)
-    print "%d unreferenced blobs to delete" % len(blobs)
-    for b in blobs.values():
-        s3.delete("shaback.hewgill.com/"+b)
+    if not failedrefs:
+        print "%d unreferenced blobs to delete" % len(blobs)
+        for b in blobs.values():
+            s3.delete("shaback.hewgill.com/"+b)
+    else:
+        print "Failed to read one or more refs files, not deleting anything"
 
 def restore(path):
     pass

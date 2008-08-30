@@ -110,6 +110,7 @@ def backup(path):
         doc.unlink()
     except IOError:
         pass
+    print "Scanning files"
     files = []
     walktree(path, lambda x: files.append(FileInfo(name = x)))
     print "Total: %d files, %d bytes" % (len(files), sum([x.size for x in files]))
@@ -129,13 +130,14 @@ def backup(path):
         if fi.hash is not None and hash != fi.hash:
             print >>sys.stderr, "Warning: file %s had same mtime and size, but hash did not match" % fi.name
         fi.hash = hash
-    print [(x.name, x.hash) for x in files]
     blobdir = s3.list("shaback.hewgill.com", "?prefix=blob/")
     hashlen = hashlib.sha1().digest_size * 2
     blobs = frozenset([x['Key'][5:5+hashlen] for x in blobdir['Contents']])
+    print "Uploading file data"
     for fi in [x for x in files if x.hash not in blobs]:
         print fi.name
         putpipe("shaback.hewgill.com/blob/"+fi.hash+".bz2", "bzip2 <"+shellquote(fi.name))
+    print "Writing index"
     f = open(os.path.join(os.environ['HOME'], ".shaback", "refs", refname+"-"+time.strftime("%Y%m%d-%H%M%S", start)), "w")
     print >>f, """<?xml version="1.0"?>"""
     print >>f, "<shaback>"

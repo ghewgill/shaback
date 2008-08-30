@@ -171,7 +171,24 @@ def fsck():
         doc.unlink()
 
 def gc():
-    pass
+    print "Reading blobs"
+    blobdir = s3.list("shaback.hewgill.com", "?prefix=blob/")
+    hashlen = hashlib.sha1().digest_size * 2
+    blobs = dict([(x['Key'][5:5+hashlen], x['Key']) for x in blobdir['Contents']])
+    print "%d blobs found" % len(blobs)
+    print "Reading refs"
+    refsdir = s3.list("shaback.hewgill.com", "?prefix=refs/")
+    for r in [x['Key'] for x in refsdir['Contents']]:
+        print r
+        doc = xml.dom.minidom.parseString(s3.get("shaback.hewgill.com/"+r).read())
+        for fi in doc.getElementsByTagName("fileinfo"):
+            hash = fi.getElementsByTagName("hash")[0].firstChild.data
+            if hash in blobs:
+                del blobs[hash]
+        doc.unlink()
+    print "%d unreferenced blobs to delete" % len(blobs)
+    for b in blobs.values():
+        s3.delete("shaback.hewgill.com/"+b)
 
 def restore(path):
     pass

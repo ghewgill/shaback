@@ -182,6 +182,8 @@ def fsck():
     print "%d blobs found" % len(blobs)
     print "Reading refs"
     refsdir = s3.list("shaback.hewgill.com", "?prefix=refs/")
+    badrefs = set()
+    badfiles = set()
     for r in [x['Key'] for x in refsdir['Contents']]:
         print r
         f = s3.get("shaback.hewgill.com/"+r)
@@ -199,9 +201,21 @@ def fsck():
             for fi in files:
                 if fi.hash not in blobs:
                     print "Blob %s referenced from %s (%s) not found!" % (fi.hash, r, fi.name)
+                    badrefs.add(r)
+                    badfiles.add(fi.name)
         finally:
             os.close(tfh)
             os.unlink(tfn)
+    if len(badrefs) > 0:
+        print
+        print "Reference files with missing blobs:"
+        for r in sorted(badrefs):
+            print r
+    if len(badfiles) > 0:
+        print
+        print "Files with missing blobs:"
+        for fn in sorted(badfiles):
+            print fn
 
 def gc():
     print "Reading blobs"

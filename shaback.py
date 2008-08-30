@@ -98,12 +98,13 @@ def walktree(base, callback):
             print "Skipping", path
 
 def backup(path):
+    refpath = os.path.join(os.environ['HOME'], ".shaback", "refs")
     refname = "shaback-" + socket.gethostname() + "-" + re.sub(re.escape(os.sep), "#", os.path.abspath(path))
     print refname
     start = time.localtime(time.time())
     lastfiles = {}
     try:
-        doc = xml.dom.minidom.parse(os.path.join(os.environ['HOME'], ".shaback", "refs", refname))
+        doc = xml.dom.minidom.parse(os.path.join(refpath, refname+".xml"))
         for fi in doc.getElementsByTagName("fileinfo"):
             fn = fi.getElementsByTagName("name")[0].firstChild.data
             lastfiles[fn] = FileInfo(xml = fi)
@@ -138,19 +139,20 @@ def backup(path):
         print fi.name
         putpipe("shaback.hewgill.com/blob/"+fi.hash+".bz2", "bzip2 <"+shellquote(fi.name))
     print "Writing index"
-    f = open(os.path.join(os.environ['HOME'], ".shaback", "refs", refname+"-"+time.strftime("%Y%m%d-%H%M%S", start)), "w")
+    timestamp = "-" + time.strftime("%Y%m%d-%H%M%S", start)
+    f = open(os.path.join(refpath, refname+timestamp+".xml"), "w")
     print >>f, """<?xml version="1.0"?>"""
     print >>f, "<shaback>"
     for fi in files:
         f.write(fi.toxml())
     print >>f, "</shaback>"
     f.close()
-    s3.put("shaback.hewgill.com/refs/"+refname+"-"+time.strftime("%Y%m%d-%H%M%S", start), file(os.path.join(os.environ['HOME'], ".shaback", "refs", refname+"-"+time.strftime("%Y%m%d-%H%M%S", start))))
+    putpipe("shaback.hewgill.com/refs/"+refname+timestamp+".xml.bz2", "bzip2 <"+shellquote(os.path.join(refpath, refname+timestamp+".xml")))
     try:
-        os.unlink(os.path.join(os.environ['HOME'], ".shaback", "refs", refname))
+        os.unlink(os.path.join(refpath, refname+".xml"))
     except:
         pass
-    os.symlink(refname+"-"+time.strftime("%Y%m%d-%H%M%S", start), os.path.join(os.environ['HOME'], ".shaback", "refs", refname))
+    os.symlink(refname+timestamp+".xml", os.path.join(refpath, refname+".xml"))
 
 def fsck():
     print "Reading blobs"

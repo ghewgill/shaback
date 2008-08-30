@@ -5,6 +5,7 @@ import shutil
 import socket
 import stat
 import sys
+import tempfile
 import time
 import xml.dom.minidom
 
@@ -164,13 +165,25 @@ def fsck():
     refsdir = s3.list("shaback.hewgill.com", "?prefix=refs/")
     for r in [x['Key'] for x in refsdir['Contents']]:
         print r
-        doc = xml.dom.minidom.parseString(s3.get("shaback.hewgill.com/"+r).read())
-        for fi in doc.getElementsByTagName("fileinfo"):
-            name = fi.getElementsByTagName("name")[0].firstChild.data
-            hash = fi.getElementsByTagName("hash")[0].firstChild.data
-            if hash not in blobs:
-                print "Blob %s referenced from %s (%s) not found!" % (hash, r, name)
-        doc.unlink()
+        f = s3.get("shaback.hewgill.com/"+r)
+        tfh, tfn = tempfile.mkstemp(prefix = "shaback.")
+        p = os.popen("bunzip2 >"+shellquote(tfn), "wb")
+        try:
+            shutil.copyfileobj(f, p)
+            p.close()
+            try:
+                doc = xml.dom.minidom.parse(tfn)
+            except:
+                continue
+            for fi in doc.getElementsByTagName("fileinfo"):
+                hash = fi.getElementsByTagName("hash")[0].firstChild.data
+                if hash not in blobs:
+                    name = fi.getElementsByTagName("name")[0].firstChild.data
+                    print "Blob %s referenced from %s (%s) not found!" % (hash, r, name)
+            doc.unlink()
+        finally:
+            os.close(tfh)
+            os.unlink(tfn)
 
 def gc():
     print "Reading blobs"
@@ -182,12 +195,24 @@ def gc():
     refsdir = s3.list("shaback.hewgill.com", "?prefix=refs/")
     for r in [x['Key'] for x in refsdir['Contents']]:
         print r
-        doc = xml.dom.minidom.parseString(s3.get("shaback.hewgill.com/"+r).read())
-        for fi in doc.getElementsByTagName("fileinfo"):
-            hash = fi.getElementsByTagName("hash")[0].firstChild.data
-            if hash in blobs:
-                del blobs[hash]
-        doc.unlink()
+        f = s3.get("shaback.hewgill.com/"+r)
+        tfh, tfn = tempfile.mkstemp(prefix = "shaback.")
+        p = os.popen("bunzip2 >"+shellquote(tfn), "wb")
+        try:
+            shutil.copyfileobj(f, p)
+            p.close()
+            try:
+                doc = xml.dom.minidom.parse(tfn)
+            except:
+                continue
+            for fi in doc.getElementsByTagName("fileinfo"):
+                hash = fi.getElementsByTagName("hash")[0].firstChild.data
+                if hash in blobs:
+                    del blobs[hash]
+            doc.unlink()
+        finally:
+            os.close(tfh)
+            os.unlink(tfn)
     print "%d unreferenced blobs to delete" % len(blobs)
     for b in blobs.values():
         s3.delete("shaback.hewgill.com/"+b)

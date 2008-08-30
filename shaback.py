@@ -1,6 +1,7 @@
 import hashlib
 import os
 import re
+import shutil
 import socket
 import stat
 import sys
@@ -75,7 +76,7 @@ def putpipe(name, cmd):
     if len(data) >= MAX_SIZE:
         tf = os.tmpfile()
         tf.write(data)
-        shutil.copyfileobj(f, tf)
+        shutil.copyfileobj(p, tf)
         data = tf
     r = p.close()
     if r is not None:

@@ -153,7 +153,22 @@ def backup(path):
     os.symlink(refname+"-"+time.strftime("%Y%m%d-%H%M%S", start), os.path.join(os.environ['HOME'], ".shaback", "refs", refname))
 
 def fsck():
-    pass
+    print "Reading blobs"
+    blobdir = s3.list("shaback.hewgill.com", "?prefix=blob/")
+    hashlen = hashlib.sha1().digest_size * 2
+    blobs = frozenset([x['Key'][5:5+hashlen] for x in blobdir['Contents']])
+    print "%d blobs found" % len(blobs)
+    print "Reading refs"
+    refsdir = s3.list("shaback.hewgill.com", "?prefix=refs/")
+    for r in [x['Key'] for x in refsdir['Contents']]:
+        print r
+        doc = xml.dom.minidom.parseString(s3.get("shaback.hewgill.com/"+r).read())
+        for fi in doc.getElementsByTagName("fileinfo"):
+            name = fi.getElementsByTagName("name")[0].firstChild.data
+            hash = fi.getElementsByTagName("hash")[0].firstChild.data
+            if hash not in blobs:
+                print "Blob %s referenced from %s (%s) not found!" % (hash, r, name)
+        doc.unlink()
 
 def gc():
     pass

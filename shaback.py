@@ -14,6 +14,40 @@ from xml.sax import saxutils
 sys.path.append("../s3c")
 import s3lib
 
+class Config:
+    def __init__(self):
+        self.Bucket = None
+        self.DryRun = False
+        self.Encrypt = None
+        self.Exclude = []
+
+Config = Config()
+s3 = None
+
+def readConfig():
+    fn = ".shabackrc"
+    if 'SHABACKRC' in os.environ:
+        fn = os.environ['SHABACKRC']
+    elif 'HOME' in os.environ:
+        fn = os.path.join(os.environ['HOME'], fn)
+    elif 'HOMEDRIVE' in os.environ and 'HOMEPATH' in os.environ:
+        fn = os.path.join(os.environ['HOMEDRIVE'], os.environ['HOMEPATH'], fn)
+    f = None
+    try:
+        f = open(fn)
+        for s in f:
+            m = re.match(r"(\w+)\s+(\S+)", s)
+            if m is None:
+                continue
+            if m.group(1) == "bucket":
+                Config.Bucket = m.group(2)
+            else:
+                continue
+        f.close()
+    except:
+        if f is not None:
+            f.close()
+
 def hashfile(fn):
     hash = hashlib.sha1()
     f = open(fn)
@@ -269,26 +303,62 @@ if len(sys.argv) < 2:
 
 access = None
 secret = None
+command = None
+args = []
+
+readConfig()
+
+a = 1
+while a < len(sys.argv):
+    if sys.argv[a][0] == "-":
+        if sys.argv[a] == "-a" or sys.argv[a] == "--access":
+            a += 1
+            access = sys.argv[a]
+        elif sys.argv[a] == "-s" or sys.argv[a] == "--secret":
+            a += 1
+            secret = sys.argv[a]
+        elif sys.argv[a] == "--dry-run":
+            Config.DryRun = True
+        elif sys.argv[a] == "--encrypt":
+            a += 1
+            Config.Encrypt = sys.argv[a]
+        elif sys.argv[a] == "--exclude":
+            a += 1
+            Config.Exclude += [sys.argv[a]]
+        else:
+            print >>sys.stderr, "shaback: Unknown option:", sys.argv[a]
+            sys.exit(1)
+    else:
+        if command is None:
+            command = sys.argv[a]
+        else:
+            args.append(sys.argv[a])
+    a += 1
+
+if Config.Bucket is None:
+    print >>sys.stderr, "shaback: No bucket specified (--bucket or ~/.shabackrc)"
+    usage()
+
 s3 = s3lib.S3Store(access, secret)
 
-if sys.argv[1] == "backup":
-    if len(sys.argv) == 3:
-        backup(sys.argv[2])
+if command == "backup":
+    if len(args) == 1:
+        backup(args[0])
     else:
         usage()
-elif sys.argv[1] == "fsck":
-    if len(sys.argv) == 2:
+elif command == "fsck":
+    if len(args) == 0:
         fsck()
     else:
         usage()
-elif sys.argv[1] == "gc":
-    if len(sys.argv) == 2:
+elif command == "gc":
+    if len(args) == 0:
         gc()
     else:
         usage()
-elif sys.argv[1] == "restore":
-    if len(sys.argv) == 3:
-        restore(sys.argv[2])
+elif command == "restore":
+    if len(args) == 1:
+        restore(args[0])
     else:
         usage()
 else:

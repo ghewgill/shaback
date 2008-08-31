@@ -186,13 +186,19 @@ def backup(path):
             print >>sys.stderr, "Warning: file %s had same mtime and size, but hash did not match" % fi.name
         fi.hash = hash
     print "Reading blobs"
-    blobdir = s3.list("shaback.hewgill.com", "?prefix=blob/")
+    blobdir = s3.list(Config.Bucket, "?prefix=blob/")
     hashlen = hashlib.sha1().digest_size * 2
     blobs = frozenset([x['Key'][5:5+hashlen] for x in blobdir['Contents']])
     print "Uploading file data"
     for fi in [x for x in files if x.hash not in blobs]:
         print fi.name
-        putpipe("shaback.hewgill.com/blob/"+fi.hash+".bz2", "bzip2 <"+shellquote(fi.name))
+        fn = Config.Bucket + "/blob/" + fi.hash + ".bz2"
+        cmd = "bzip2 <" + shellquote(fi.name)
+        if Config.Encrypt:
+            fn += ".gpg"
+            cmd += " | gpg --encrypt -r " + Config.Encrypt
+        if not Config.DryRun:
+            putpipe(fn, cmd)
     print "Writing index"
     timestamp = "-" + time.strftime("%Y%m%d-%H%M%S", start)
     f = open(os.path.join(refpath, refname+timestamp+".xml"), "w")
@@ -202,26 +208,32 @@ def backup(path):
         f.write(fi.toxml())
     print >>f, "</shaback>"
     f.close()
-    putpipe("shaback.hewgill.com/refs/"+refname+timestamp+".xml.bz2", "bzip2 <"+shellquote(os.path.join(refpath, refname+timestamp+".xml")))
-    try:
-        os.unlink(os.path.join(refpath, refname+".xml"))
-    except:
-        pass
-    os.symlink(refname+timestamp+".xml", os.path.join(refpath, refname+".xml"))
+    fn = Config.Bucket + "/refs/" + refname + timestamp + ".xml.bz2"
+    cmd = "bzip2 <" + shellquote(os.path.join(refpath, refname + timestamp + ".xml"))
+    if Config.Encrypt:
+        fn += ".gpg"
+        cmd += " | gpg --encrypt -r " + Config.Encrypt
+    if not Config.DryRun:
+        putpipe(fn, cmd)
+        try:
+            os.unlink(os.path.join(refpath, refname+".xml"))
+        except:
+            pass
+        os.symlink(refname+timestamp+".xml", os.path.join(refpath, refname+".xml"))
 
 def fsck():
     print "Reading blobs"
-    blobdir = s3.list("shaback.hewgill.com", "?prefix=blob/")
+    blobdir = s3.list(Config.Bucket, "?prefix=blob/")
     hashlen = hashlib.sha1().digest_size * 2
     blobs = frozenset([x['Key'][5:5+hashlen] for x in blobdir['Contents']])
     print "%d blobs found" % len(blobs)
     print "Reading refs"
-    refsdir = s3.list("shaback.hewgill.com", "?prefix=refs/")
+    refsdir = s3.list(Config.Bucket, "?prefix=refs/")
     badrefs = set()
     badfiles = set()
     for r in [x['Key'] for x in refsdir['Contents']]:
         print r
-        f = s3.get("shaback.hewgill.com/"+r)
+        f = s3.get(Config.Bucket+"/"+r)
         tfh, tfn = tempfile.mkstemp(prefix = "shaback.")
         p = os.popen("bunzip2 >"+shellquote(tfn), "wb")
         try:
@@ -254,16 +266,16 @@ def fsck():
 
 def gc():
     print "Reading blobs"
-    blobdir = s3.list("shaback.hewgill.com", "?prefix=blob/")
+    blobdir = s3.list(Config.Bucket, "?prefix=blob/")
     hashlen = hashlib.sha1().digest_size * 2
     blobs = dict([(x['Key'][5:5+hashlen], x['Key']) for x in blobdir['Contents']])
     print "%d blobs found" % len(blobs)
     failedrefs = False
     print "Reading refs"
-    refsdir = s3.list("shaback.hewgill.com", "?prefix=refs/")
+    refsdir = s3.list(Config.Bucket, "?prefix=refs/")
     for r in [x['Key'] for x in refsdir['Contents']]:
         print r
-        f = s3.get("shaback.hewgill.com/"+r)
+        f = s3.get(Config.Bucket+"/"+r)
         tfh, tfn = tempfile.mkstemp(prefix = "shaback.")
         p = os.popen("bunzip2 >"+shellquote(tfn), "wb")
         try:
@@ -283,8 +295,9 @@ def gc():
             os.unlink(tfn)
     if not failedrefs:
         print "%d unreferenced blobs to delete" % len(blobs)
-        for b in blobs.values():
-            s3.delete("shaback.hewgill.com/"+b)
+        if not Config.DryRun:
+            for b in blobs.values():
+                s3.delete(Config.Backup+"/"+b)
     else:
         print "Failed to read one or more refs files, not deleting anything"
 

@@ -218,9 +218,10 @@ def backup(path):
             if not Config.DryRun:
                 putpipe(fn, cmd)
     print "Writing blob cache"
-    f = open(os.path.join(shabackpath, "blobcache"), "w")
-    cPickle.dump(blobs, f)
-    f.close()
+    if not Config.DryRun:
+        f = open(os.path.join(shabackpath, "blobcache"), "w")
+        cPickle.dump(blobs, f)
+        f.close()
     print "Writing index"
     timestamp = "-" + time.strftime("%Y%m%d-%H%M%S", start)
     f = open(os.path.join(refpath, refname+timestamp+".xml"), "w")

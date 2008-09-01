@@ -1,3 +1,4 @@
+import cPickle
 import hashlib
 import os
 import re
@@ -155,7 +156,8 @@ def walktree(base, callback):
             print "Skipping", path
 
 def backup(path):
-    refpath = os.path.join(os.environ['HOME'], ".shaback", "refs")
+    shabackpath = os.path.join(os.environ['HOME'], ".shaback")
+    refpath = os.path.join(shabackpath, "refs")
     refname = "shaback-" + socket.gethostname() + "-" + re.sub(re.escape(os.sep), "#", os.path.abspath(path))
     print refname
     start = time.localtime(time.time())
@@ -187,20 +189,38 @@ def backup(path):
         if fi.hash is not None and hash != fi.hash:
             print >>sys.stderr, "Warning: file %s had same mtime and size, but hash did not match" % fi.name
         fi.hash = hash
-    print "Reading blobs"
-    blobdir = s3.list(Config.Bucket, "?prefix=blob/")
-    hashlen = hashlib.sha1().digest_size * 2
-    blobs = frozenset([x['Key'][5:5+hashlen] for x in blobdir['Contents']])
+    print "Reading blob cache"
+    blobs = {}
+    f = None
+    try:
+        f = open(os.path.join(shabackpath, "blobcache"))
+        blobs = cPickle.load(f)
+    except:
+        pass
+    finally:
+        if f is not None:
+            f.close()
     print "Uploading file data"
     for fi in [x for x in files if x.hash not in blobs]:
         print fi.name
-        fn = Config.Bucket + "/blob/" + fi.hash + ".bz2"
-        cmd = "bzip2 <" + shellquote(fi.name)
+        suffix = ".bz2"
         if Config.Encrypt:
-            fn += ".gpg"
-            cmd += " | gpg --encrypt -r " + Config.Encrypt
-        if not Config.DryRun:
-            putpipe(fn, cmd)
+            suffix += ".gpg"
+        blobs[fi.hash] = suffix
+        fn = Config.Bucket + "/blob/" + fi.hash + suffix
+        try:
+            # head is 10x cheaper than list
+            s3.get(fn, method = "HEAD")
+        except s3lib.S3Exception:
+            cmd = "bzip2 <" + shellquote(fi.name)
+            if Config.Encrypt:
+                cmd += " | gpg --encrypt -r " + Config.Encrypt
+            if not Config.DryRun:
+                putpipe(fn, cmd)
+    print "Writing blob cache"
+    f = open(os.path.join(shabackpath, "blobcache"), "w")
+    cPickle.dump(blobs, f)
+    f.close()
     print "Writing index"
     timestamp = "-" + time.strftime("%Y%m%d-%H%M%S", start)
     f = open(os.path.join(refpath, refname+timestamp+".xml"), "w")

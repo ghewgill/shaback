@@ -132,14 +132,16 @@ class RefsHandler(xml.sax.ContentHandler):
         if name == "fileinfo":
             self.fileinfo = FileInfo()
             self.element = None
+        self.text = ""
     def endElement(self, name):
         if name == "fileinfo":
             self.files.append(self.fileinfo)
             self.fileinfo = None
+        elif self.fileinfo is not None and self.element is not None:
+            self.fileinfo.saxHandler(self.element, self.text)
         self.element = None
     def characters(self, content):
-        if self.fileinfo is not None and self.element is not None:
-            self.fileinfo.saxHandler(self.element, content)
+        self.text += content
 
 def walktree(base, callback):
     for f in os.listdir(base):

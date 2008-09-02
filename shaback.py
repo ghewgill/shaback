@@ -20,6 +20,7 @@ class Config:
         self.Bucket = None
         self.DryRun = False
         self.Encrypt = None
+        self.Verbose = False
         self.Exclude = []
 
 Config = Config()
@@ -184,7 +185,8 @@ def backup(path):
                 hashfiles.append(fi)
     print "To hash: %d files, %d bytes" % (len(hashfiles), sum([x.size for x in hashfiles]))
     for fi in hashfiles:
-        print "hashing", fi.name
+        if Config.Verbose:
+            print "hashing", fi.name
         hash = hashfile(fi.name)
         if fi.hash is not None and hash != fi.hash:
             print >>sys.stderr, "Warning: file %s had same mtime and size, but hash did not match" % fi.name
@@ -202,7 +204,8 @@ def backup(path):
             f.close()
     print "Uploading file data"
     for fi in [x for x in files if x.hash not in blobs]:
-        print fi.name
+        if Config.Verbose:
+            print fi.name
         suffix = ".bz2"
         if Config.Encrypt:
             suffix += ".gpg"
@@ -255,7 +258,8 @@ def fsck():
     badrefs = set()
     badfiles = set()
     for r in [x['Key'] for x in refsdir['Contents']]:
-        print r
+        if Config.Verbose:
+            print r
         f = s3.get(Config.Bucket+"/"+r)
         tfh, tfn = tempfile.mkstemp(prefix = "shaback.")
         p = os.popen("bunzip2 >"+shellquote(tfn), "wb")
@@ -297,7 +301,8 @@ def gc():
     print "Reading refs"
     refsdir = s3.list(Config.Bucket, "?prefix=refs/")
     for r in [x['Key'] for x in refsdir['Contents']]:
-        print r
+        if Config.Verbose:
+            print r
         f = s3.get(Config.Bucket+"/"+r)
         tfh, tfn = tempfile.mkstemp(prefix = "shaback.")
         p = os.popen("bunzip2 >"+shellquote(tfn), "wb")
@@ -358,6 +363,8 @@ while a < len(sys.argv):
         elif sys.argv[a] == "--encrypt":
             a += 1
             Config.Encrypt = sys.argv[a]
+        elif sys.argv[a] == "--verbose":
+            Config.Verbose = True
         elif sys.argv[a] == "--exclude":
             a += 1
             Config.Exclude += [sys.argv[a]]

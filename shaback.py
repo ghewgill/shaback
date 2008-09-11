@@ -183,7 +183,9 @@ def backup(path):
                 fi.hash = lastfiles[fi.name].hash
             else:
                 hashfiles.append(fi)
-    print "To hash: %d files, %d bytes" % (len(hashfiles), sum([x.size for x in hashfiles]))
+    total = sum([x.size for x in hashfiles])
+    print "To hash: %d files, %d bytes" % (len(hashfiles), total)
+    done = 0 
     for fi in hashfiles:
         if Config.Verbose:
             print "hashing", fi.name
@@ -191,6 +193,10 @@ def backup(path):
         if fi.hash is not None and hash != fi.hash:
             print >>sys.stderr, "Warning: file %s had same mtime and size, but hash did not match" % fi.name
         fi.hash = hash
+        done += os.stat(fi.name).st_size
+        sys.stdout.write("%d%%\r" % int(100*done/total))
+        if Config.Verbose:
+            print
     print "Reading blob cache"
     blobs = {}
     f = None
@@ -203,7 +209,11 @@ def backup(path):
         if f is not None:
             f.close()
     print "Uploading file data"
-    for fi in [x for x in files if x.hash not in blobs]:
+    todo = [x for x in files if x.hash not in blobs]
+    total = sum([x.size for x in todo])
+    print "To upload: %d files, %d bytes" % (len(todo), total)
+    done = 0
+    for fi in todo:
         if Config.Verbose:
             print fi.name
         suffix = ".bz2"
@@ -220,6 +230,10 @@ def backup(path):
                 cmd += " | gpg --encrypt -r " + Config.Encrypt
             if not Config.DryRun:
                 putpipe(fn, cmd)
+        done += os.stat(fi.name).st_size
+        sys.stdout.write("%d%%\r" % int(100*done/total))
+        if Config.Verbose:
+            print
     print "Writing blob cache"
     if not Config.DryRun:
         f = open(os.path.join(shabackpath, "blobcache"), "w")

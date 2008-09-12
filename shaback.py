@@ -204,10 +204,11 @@ def backup(path):
             print >>sys.stderr, "Warning: file %s had same mtime and size, but hash did not match" % fi.name
         fi.hash = hash
         done += os.stat(fi.name).st_size
-        sys.stdout.write("%3d%%\r" % int(100*done/total))
-        sys.stdout.flush()
-        if Config.Verbose:
-            print
+        if sys.stdout.isatty():
+            sys.stdout.write("%3d%%\r" % int(100*done/total))
+            sys.stdout.flush()
+            if Config.Verbose:
+                print
     print "Reading blob cache"
     blobs = {}
     f = None
@@ -242,10 +243,11 @@ def backup(path):
             if not Config.DryRun:
                 putpipe(fn, cmd)
         done += os.stat(fi.name).st_size
-        sys.stdout.write("%3d%%\r" % int(100*done/total))
-        sys.stdout.flush()
-        if Config.Verbose:
-            print
+        if sys.stdout.isatty():
+            sys.stdout.write("%3d%%\r" % int(100*done/total))
+            sys.stdout.flush()
+            if Config.Verbose:
+                print
     print "Writing blob cache"
     if not Config.DryRun:
         f = open(os.path.join(shabackpath, "blobcache"), "w")

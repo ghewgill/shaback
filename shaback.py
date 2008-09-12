@@ -1,4 +1,5 @@
 import cPickle
+import fnmatch
 import hashlib
 import os
 import re
@@ -172,8 +173,17 @@ def backup(path):
         pass
     print "Scanning files"
     files = []
-    walktree(path, lambda x: files.append(FileInfo(name = x)))
-    print "Total: %d files, %d bytes" % (len(files), sum([x.size for x in files]))
+    excluded = []
+    def addfile(fn):
+        for e in Config.Exclude:
+            if fnmatch.fnmatch(fn, e):
+                if Config.Verbose:
+                    print "exclude", fn
+                excluded.append(fn)
+                return
+        files.append(FileInfo(name = fn))
+    walktree(path, addfile)
+    print "Total: %d files, %d bytes" % (len(files), sum([x.size for x in files])), "(%d excluded)" % len(excluded) if excluded else ""
     hashfiles = []
     if False: # rehash
         hashfiles = files

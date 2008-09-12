@@ -44,6 +44,8 @@ def readConfig():
                 continue
             if m.group(1) == "bucket":
                 Config.Bucket = m.group(2)
+            elif m.group(1) == "exclude":
+                Config.Exclude.append(m.group(2))
             else:
                 continue
         f.close()
@@ -395,7 +397,7 @@ while a < len(sys.argv):
             Config.Verbose = True
         elif sys.argv[a] == "--exclude":
             a += 1
-            Config.Exclude += [sys.argv[a]]
+            Config.Exclude.append(sys.argv[a])
         else:
             print >>sys.stderr, "shaback: Unknown option:", sys.argv[a]
             sys.exit(1)

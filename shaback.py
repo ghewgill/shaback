@@ -55,7 +55,11 @@ def readConfig():
 
 def hashfile(fn):
     hash = hashlib.sha1()
-    f = open(fn)
+    try:
+        f = open(fn)
+    except IOError, e:
+        print >>sys.stderr, "Error (%s): %s" % (e, fn)
+        return None
     while True:
         buf = f.read(16384)
         if len(buf) == 0:
@@ -149,9 +153,18 @@ class RefsHandler(xml.sax.ContentHandler):
         self.text += content
 
 def walktree(base, callback):
-    for f in os.listdir(base):
+    try:
+        files = os.listdir(base)
+    except OSError, e:
+        print >>sys.stderr, "Error (%s): %s" % (e, base)
+        return
+    for f in files:
         path = os.path.join(base, f)
-        mode = os.stat(path).st_mode
+        try:
+            mode = os.lstat(path).st_mode
+        except OSError, e:
+            print >>sys.stderr, "Error (%s): %s" % (e, path)
+            continue
         if stat.S_ISDIR(mode):
             walktree(path, callback)
         elif stat.S_ISREG(mode):
@@ -202,6 +215,8 @@ def backup(path):
         if Config.Verbose:
             print "hashing", fi.name
         hash = hashfile(fi.name)
+        if hash is None:
+            continue
         if fi.hash is not None and hash != fi.hash:
             print >>sys.stderr, "Warning: file %s had same mtime and size, but hash did not match" % fi.name
         fi.hash = hash
@@ -223,7 +238,7 @@ def backup(path):
         if f is not None:
             f.close()
     print "Uploading file data"
-    todo = [x for x in files if x.hash not in blobs]
+    todo = [x for x in files if x.hash is not None and x.hash not in blobs]
     total = sum([x.size for x in todo])
     print "To upload: %d files, %d bytes" % (len(todo), total)
     done = 0

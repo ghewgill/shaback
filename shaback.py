@@ -13,7 +13,7 @@ import xml.sax
 
 from xml.sax import saxutils
 
-sys.path.append("../s3c")
+sys.path.append("s3lib")
 import s3lib
 
 class Config:

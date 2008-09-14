@@ -432,6 +432,8 @@ if Config.Bucket is None:
     usage()
 
 s3 = s3lib.S3Store(access, secret)
+monitor = s3lib.Monitor()
+s3.addmonitor(monitor)
 
 if command == "backup":
     if len(args) == 1:
@@ -455,3 +457,7 @@ elif command == "restore":
         usage()
 else:
     usage()
+
+print monitor._request
+print monitor._bytesin
+print s3lib.cost(monitor)

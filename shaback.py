@@ -174,7 +174,11 @@ def walktree(base, callback):
 
 def backup(path):
     shabackpath = os.path.join(os.environ['HOME'], ".shaback")
+    if not os.access(shabackpath, os.F_OK):
+        os.mkdir(shabackpath)
     refpath = os.path.join(shabackpath, "refs")
+    if not os.access(refpath, os.F_OK):
+        os.mkdir(refpath)
     refname = "shaback-" + socket.gethostname() + "-" + re.sub(re.escape(os.sep), "#", os.path.abspath(path))
     print refname
     start = time.localtime(time.time())
@@ -256,7 +260,7 @@ def backup(path):
         except s3lib.S3Exception:
             cmd = "bzip2 <" + shellquote(fi.name)
             if Config.Encrypt:
-                cmd += " | gpg --encrypt -r " + Config.Encrypt
+                cmd += " | gpg --encrypt --no-armor -r " + Config.Encrypt
             if not Config.DryRun:
                 putpipe(fn, cmd, fi.name)
         done += os.stat(fi.name).st_size
@@ -283,7 +287,7 @@ def backup(path):
     cmd = "bzip2 <" + shellquote(os.path.join(refpath, refname + timestamp + ".xml"))
     if Config.Encrypt:
         fn += ".gpg"
-        cmd += " | gpg --encrypt -r " + Config.Encrypt
+        cmd += " | gpg --encrypt --no-armor -r " + Config.Encrypt
     if not Config.DryRun:
         putpipe(fn, cmd, os.path.join(refpath, refname + timestamp + ".xml"))
         try:

@@ -158,7 +158,11 @@ def walktree(base, callback):
 
 def backup(path):
     shabackpath = os.path.join(os.environ['HOME'], ".shaback")
+    if not os.access(shabackpath, os.F_OK):
+        os.mkdir(shabackpath)
     refpath = os.path.join(shabackpath, "refs")
+    if not os.access(refpath, os.F_OK):
+        os.mkdir(refpath)
     refname = "shaback-" + socket.gethostname() + "-" + re.sub(re.escape(os.sep), "#", os.path.abspath(path))
     print refname
     start = time.localtime(time.time())

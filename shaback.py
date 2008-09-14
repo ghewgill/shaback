@@ -231,7 +231,7 @@ def backup(path):
         except s3lib.S3Exception:
             cmd = "bzip2 <" + shellquote(fi.name)
             if Config.Encrypt:
-                cmd += " | gpg --encrypt -r " + Config.Encrypt
+                cmd += " | gpg --encrypt --no-armor -r " + Config.Encrypt
             if not Config.DryRun:
                 putpipe(fn, cmd)
         done += os.stat(fi.name).st_size
@@ -256,7 +256,7 @@ def backup(path):
     cmd = "bzip2 <" + shellquote(os.path.join(refpath, refname + timestamp + ".xml"))
     if Config.Encrypt:
         fn += ".gpg"
-        cmd += " | gpg --encrypt -r " + Config.Encrypt
+        cmd += " | gpg --encrypt --no-armor -r " + Config.Encrypt
     if not Config.DryRun:
         putpipe(fn, cmd)
         try:

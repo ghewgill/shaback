@@ -112,7 +112,7 @@ class FileInfo:
 def shellquote(s):
     return "'" + s.replace("'", "'\\''") + "'"
 
-def putpipe(name, cmd):
+def putpipe(name, cmd, path):
     MAX_SIZE = 1000000
     p = os.popen(cmd)
     data = p.read(MAX_SIZE)
@@ -124,7 +124,7 @@ def putpipe(name, cmd):
         data = tf
     r = p.close()
     if r is not None:
-        print >>sys.stderr, "shaback: Error processing file %s: %s" % (fn, r)
+        print >>sys.stderr, "shaback: Error processing file %s: %s" % (path, r)
     else:
         r = s3.put(name, data)
     if tf is not None:
@@ -258,7 +258,7 @@ def backup(path):
             if Config.Encrypt:
                 cmd += " | gpg --encrypt -r " + Config.Encrypt
             if not Config.DryRun:
-                putpipe(fn, cmd)
+                putpipe(fn, cmd, fi.name)
         done += os.stat(fi.name).st_size
         if sys.stdout.isatty():
             sys.stdout.write("%3d%%\r" % int(100*done/total))
@@ -285,7 +285,7 @@ def backup(path):
         fn += ".gpg"
         cmd += " | gpg --encrypt -r " + Config.Encrypt
     if not Config.DryRun:
-        putpipe(fn, cmd)
+        putpipe(fn, cmd, os.path.join(refpath, refname + timestamp + ".xml"))
         try:
             os.unlink(os.path.join(refpath, refname+".xml"))
         except:

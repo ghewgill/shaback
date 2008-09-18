@@ -263,7 +263,7 @@ def backup(path):
                 cmd += " | gpg --encrypt --no-armor -r " + Config.Encrypt
             if not Config.DryRun:
                 putpipe(fn, cmd, fi.name)
-        done += os.stat(fi.name).st_size
+        done += fi.size
         if sys.stdout.isatty():
             sys.stdout.write("%3d%%\r" % int(100*done/total))
             sys.stdout.flush()

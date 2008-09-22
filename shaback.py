@@ -21,6 +21,7 @@ class Config:
         self.Bucket = None
         self.DryRun = False
         self.Encrypt = None
+        self.Passphrase = None
         self.Verbose = False
         self.Exclude = []
 
@@ -310,9 +311,26 @@ def fsck():
     for r in [x['Key'] for x in refsdir['Contents']]:
         if Config.Verbose:
             print r
+        process = True
+        filters = []
+        for suffix in reversed(r.split(".")):
+            if suffix == "bz2":
+                filters.append("bunzip2")
+            elif suffix == "gpg":
+                if Config.Passphrase is None:
+                    print >>sys.stderr, "Encrypted index file found and no passphrase specified:", r
+                    process = False
+                    break
+                # TODO: use --passphrase-fd
+                filters.append("gpg --decrypt --passphrase %s" % shellquote(Config.Passphrase))
+            else:
+                break
+        if not process:
+            continue
         f = s3.get(Config.Bucket+"/"+r)
         tfh, tfn = tempfile.mkstemp(prefix = "shaback.")
-        p = os.popen("bunzip2 >"+shellquote(tfn), "wb")
+        cmd = "|".join(filters) + ">" + shellquote(tfn)
+        p = os.popen(cmd, "wb")
         try:
             shutil.copyfileobj(f, p)
             p.close()
@@ -413,6 +431,9 @@ while a < len(sys.argv):
         elif sys.argv[a] == "--encrypt":
             a += 1
             Config.Encrypt = sys.argv[a]
+        elif sys.argv[a] == "--passphrase":
+            a += 1
+            Config.Passphrase = sys.argv[a]
         elif sys.argv[a] == "--verbose":
             Config.Verbose = True
         elif sys.argv[a] == "--exclude":

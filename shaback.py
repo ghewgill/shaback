@@ -259,6 +259,8 @@ def backup(path):
         try:
             # head is 10x cheaper than list
             s3.get(fn, method = "HEAD")
+            if Config.Verbose:
+                print "- blob already present on backup"
         except s3lib.S3Exception:
             cmd = "bzip2 <" + shellquote(fi.name)
             if Config.Encrypt:

@@ -79,13 +79,13 @@ class FileInfo:
         self.gid = None
         self.hash = None
         if 'name' in args:
-            st = os.stat(args['name'])
+            assert 'stat' in args
             self.name = args['name']
-            self.size = st.st_size
-            self.mtime = st.st_mtime
-            self.mode = st.st_mode
-            self.uid = st.st_uid
-            self.gid = st.st_gid
+            self.size = args['stat'].st_size
+            self.mtime = args['stat'].st_mtime
+            self.mode = args['stat'].st_mode
+            self.uid = args['stat'].st_uid
+            self.gid = args['stat'].st_gid
     def saxHandler(self, name, data):
         if   name == "name" : self.name  = data
         elif name == "size" : self.size  = int(data)
@@ -162,14 +162,14 @@ def walktree(base, callback):
     for f in files:
         path = os.path.join(base, f)
         try:
-            mode = os.lstat(path).st_mode
+            st = os.lstat(path)
         except OSError, e:
             print >>sys.stderr, "Error (%s): %s" % (e, path)
             continue
-        if stat.S_ISDIR(mode):
+        if stat.S_ISDIR(st.st_mode):
             walktree(path, callback)
-        elif stat.S_ISREG(mode):
-            callback(path)
+        elif stat.S_ISREG(st.st_mode):
+            callback(path, st)
         else:
             print "Skipping", path
 
@@ -194,14 +194,14 @@ def backup(path):
     print "Scanning files"
     files = []
     excluded = []
-    def addfile(fn):
+    def addfile(fn, st):
         for e in Config.Exclude:
             if fnmatch.fnmatch(fn, e):
                 if Config.Verbose:
                     print "exclude", fn
                 excluded.append(fn)
                 return
-        files.append(FileInfo(name = fn))
+        files.append(FileInfo(name = fn, stat = st))
     walktree(path, addfile)
     print "Total: %d files, %d bytes" % (len(files), sum([x.size for x in files])), "(%d excluded)" % len(excluded) if excluded else ""
     hashfiles = []
@@ -225,7 +225,7 @@ def backup(path):
         if fi.hash is not None and hash != fi.hash:
             print >>sys.stderr, "Warning: file %s had same mtime and size, but hash did not match" % fi.name
         fi.hash = hash
-        done += os.stat(fi.name).st_size
+        done += fi.size
         if sys.stdout.isatty():
             sys.stdout.write("%3d%%\r" % int(100*done/total))
             sys.stdout.flush()

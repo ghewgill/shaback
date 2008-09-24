@@ -284,6 +284,8 @@ def backup(path):
         cachecount += 1
         if cachecount > 100:
             if not Config.DryRun:
+                if Config.Verbose:
+                    print "Rewriting blobcache"
                 f = open(os.path.join(shabackpath, "blobcache"), "w")
                 cPickle.dump(blobs, f)
                 f.close()

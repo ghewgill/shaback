@@ -54,19 +54,26 @@ def readConfig():
         if f is not None:
             f.close()
 
-def hashfile(fn):
+def hashfile(fn, issymlink = False):
     hash = hashlib.sha1()
-    try:
-        f = open(fn)
-    except IOError, e:
-        print >>sys.stderr, "Error (%s): %s" % (e, fn)
-        return None
-    while True:
-        buf = f.read(16384)
-        if len(buf) == 0:
-            break
-        hash.update(buf)
-    f.close()
+    if issymlink:
+        try:
+            hash.update(os.readlink(fn))
+        except IOError, e:
+            print >>sys.stderr, "Error (%s): %s" % (e, fn)
+            return None
+    else:
+        try:
+            f = open(fn)
+        except IOError, e:
+            print >>sys.stderr, "Error (%s): %s" % (e, fn)
+            return None
+        while True:
+            buf = f.read(16384)
+            if len(buf) == 0:
+                break
+            hash.update(buf)
+        f.close()
     return hash.hexdigest()
 
 class FileInfo:
@@ -170,6 +177,8 @@ def walktree(base, callback):
             walktree(path, callback)
         elif stat.S_ISREG(st.st_mode):
             callback(path, st)
+        elif stat.S_ISLNK(st.st_mode):
+            callback(path, st)
         else:
             print "Skipping", path
 
@@ -219,7 +228,7 @@ def backup(path):
     for fi in hashfiles:
         if Config.Verbose:
             print "hashing", fi.name
-        hash = hashfile(fi.name)
+        hash = hashfile(fi.name, stat.S_ISLNK(fi.mode))
         if hash is None:
             continue
         if fi.hash is not None and hash != fi.hash:
@@ -263,7 +272,10 @@ def backup(path):
             if Config.Verbose:
                 print "- blob already present on backup"
         except s3lib.S3Exception:
-            cmd = "bzip2 <" + shellquote(fi.name)
+            if stat.S_ISLNK(fi.mode):
+                cmd = "echo -n " + shellquote(os.readlink(fi.name)) + " | bzip2"
+            else:
+                cmd = "bzip2 <" + shellquote(fi.name)
             if Config.Encrypt:
                 cmd += " | gpg --encrypt --no-armor -r " + Config.Encrypt
             if not Config.DryRun:

@@ -320,19 +320,9 @@ def backup(path):
             pass
         os.symlink(refname+timestamp+".xml", os.path.join(refpath, refname+".xml"))
 
-def fsck():
-    print "Reading blobs"
-    blobdir = s3.list(Config.Bucket, "?prefix=blob/")
-    hashlen = hashlib.sha1().digest_size * 2
-    blobs = frozenset([x['Key'][5:5+hashlen] for x in blobdir['Contents']])
-    print "%d blobs found" % len(blobs)
-    print "Reading refs"
+def reffiles(allowunencryptable):
     refsdir = s3.list(Config.Bucket, "?prefix=refs/")
-    badrefs = set()
-    badfiles = set()
     for r in [x['Key'] for x in refsdir['Contents']]:
-        if Config.Verbose:
-            print r
         process = True
         filters = []
         for suffix in reversed(r.split(".")):
@@ -341,8 +331,11 @@ def fsck():
             elif suffix == "gpg":
                 if Config.Passphrase is None:
                     print >>sys.stderr, "Encrypted index file found and no passphrase specified:", r
-                    process = False
-                    break
+                    if allowunencryptable:
+                        process = False
+                        break
+                    else:
+                        sys.exit(1)
                 # TODO: use --passphrase-fd
                 filters.append("gpg --decrypt --passphrase %s" % shellquote(Config.Passphrase))
             else:
@@ -356,20 +349,34 @@ def fsck():
         try:
             shutil.copyfileobj(f, p)
             p.close()
-            try:
-                files = []
-                xml.sax.parse(tfn, RefsHandler(files))
-            except xml.sax.SAXException:
-                print "Warning: failed to read refs file:", r
-                continue
-            for fi in files:
-                if fi.hash not in blobs:
-                    print "Blob %s referenced from %s (%s) not found!" % (fi.hash, r, fi.name)
-                    badrefs.add(r)
-                    badfiles.add(fi.name)
+            yield (r, tfn)
         finally:
             os.close(tfh)
             os.unlink(tfn)
+
+def fsck():
+    print "Reading blobs"
+    blobdir = s3.list(Config.Bucket, "?prefix=blob/")
+    hashlen = hashlib.sha1().digest_size * 2
+    blobs = frozenset([x['Key'][5:5+hashlen] for x in blobdir['Contents']])
+    print "%d blobs found" % len(blobs)
+    print "Reading refs"
+    badrefs = set()
+    badfiles = set()
+    for r, fn in reffiles(True):
+        if Config.Verbose:
+            print r
+        try:
+            files = []
+            xml.sax.parse(fn, RefsHandler(files))
+        except xml.sax.SAXException:
+            print "Warning: failed to read refs file:", r
+            continue
+        for fi in files:
+            if fi.hash not in blobs:
+                print "Blob %s referenced from %s (%s) not found!" % (fi.hash, r, fi.name)
+                badrefs.add(r)
+                badfiles.add(fi.name)
     if len(badrefs) > 0:
         print
         print "Reference files with missing blobs:"
@@ -389,28 +396,18 @@ def gc():
     print "%d blobs found" % len(blobs)
     failedrefs = False
     print "Reading refs"
-    refsdir = s3.list(Config.Bucket, "?prefix=refs/")
-    for r in [x['Key'] for x in refsdir['Contents']]:
+    for r, fn in reffiles(False):
         if Config.Verbose:
             print r
-        f = s3.get(Config.Bucket+"/"+r)
-        tfh, tfn = tempfile.mkstemp(prefix = "shaback.")
-        p = os.popen("bunzip2 >"+shellquote(tfn), "wb")
         try:
-            shutil.copyfileobj(f, p)
-            p.close()
-            try:
-                files = []
-                xml.sax.parse(tfn, RefsHandler(files))
-            except xml.sax.SAXException:
-                failedrefs = True
-                continue
-            for fi in files:
-                if fi.hash in blobs:
-                    del blobs[fi.hash]
-        finally:
-            os.close(tfh)
-            os.unlink(tfn)
+            files = []
+            xml.sax.parse(fn, RefsHandler(files))
+        except xml.sax.SAXException:
+            failedrefs = True
+            continue
+        for fi in files:
+            if fi.hash in blobs:
+                del blobs[fi.hash]
     if not failedrefs:
         print "%d unreferenced blobs to delete" % len(blobs)
         if not Config.DryRun:

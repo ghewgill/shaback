@@ -182,6 +182,10 @@ def walktree(base, callback):
         else:
             print "Skipping", path
 
+def progress(**args):
+    sys.stdout.write("%d\r" % args['count'])
+    sys.stdout.flush()
+
 def backup(path):
     shabackpath = os.path.join(os.environ['HOME'], ".shaback")
     if not os.access(shabackpath, os.F_OK):
@@ -358,7 +362,7 @@ def reffiles(allowunencryptable):
 
 def fsck():
     print "Reading blobs"
-    blobdir = s3.list(Config.Bucket, "?prefix=blob/")
+    blobdir = s3.list(Config.Bucket, "?prefix=blob/", callback = progress)
     hashlen = hashlib.sha1().digest_size * 2
     blobs = frozenset([x['Key'][5:5+hashlen] for x in blobdir['Contents']])
     print "%d blobs found" % len(blobs)
@@ -392,7 +396,7 @@ def fsck():
 
 def gc():
     print "Reading blobs"
-    blobdir = s3.list(Config.Bucket, "?prefix=blob/")
+    blobdir = s3.list(Config.Bucket, "?prefix=blob/", callback = progress)
     hashlen = hashlib.sha1().digest_size * 2
     blobs = dict([(x['Key'][5:5+hashlen], x['Key']) for x in blobdir['Contents']])
     print "%d blobs found" % len(blobs)
@@ -421,7 +425,7 @@ def gc():
 def refresh():
     shabackpath = os.path.join(os.environ['HOME'], ".shaback")
     print "Reading blobs"
-    blobdir = s3.list(Config.Bucket, "?prefix=blob/")
+    blobdir = s3.list(Config.Bucket, "?prefix=blob/", callback = progress)
     hashlen = hashlib.sha1().digest_size * 2
     blobs = dict([(x['Key'][5:5+hashlen], x['Key'][5+hashlen:]) for x in blobdir['Contents']])
     print "%d blobs found" % len(blobs)

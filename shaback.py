@@ -418,6 +418,19 @@ def gc():
     else:
         print "Failed to read one or more refs files, not deleting anything"
 
+def refresh():
+    shabackpath = os.path.join(os.environ['HOME'], ".shaback")
+    print "Reading blobs"
+    blobdir = s3.list(Config.Bucket, "?prefix=blob/")
+    hashlen = hashlib.sha1().digest_size * 2
+    blobs = dict([(x['Key'][5:5+hashlen], x['Key'][5+hashlen:]) for x in blobdir['Contents']])
+    print "%d blobs found" % len(blobs)
+    print "Writing blob cache"
+    if not Config.DryRun:
+        f = open(os.path.join(shabackpath, "blobcache"), "w")
+        cPickle.dump(blobs, f)
+        f.close()
+
 def restore(path):
     pass
 
@@ -491,6 +504,11 @@ elif command == "fsck":
 elif command == "gc":
     if len(args) == 0:
         gc()
+    else:
+        usage()
+elif command == "refresh":
+    if len(args) == 0:
+        refresh()
     else:
         usage()
 elif command == "restore":

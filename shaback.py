@@ -326,6 +326,35 @@ def backup(path):
             pass
         os.symlink(refname+timestamp+".xml", os.path.join(refpath, refname+".xml"))
 
+def getfile(name, allowunencryptable):
+    process = True
+    filters = []
+    for suffix in reversed(name.split(".")):
+        if suffix == "bz2":
+            filters.append("bunzip2")
+        elif suffix == "gpg":
+            if Config.Passphrase is None:
+                print >>sys.stderr, "Encrypted file found and no passphrase specified:", name
+                if allowunencryptable:
+                    process = False
+                    break
+                else:
+                    sys.exit(1)
+            # TODO: use --passphrase-fd
+            filters.append("gpg --decrypt --passphrase %s" % shellquote(Config.Passphrase))
+        else:
+            break
+    if not process:
+        return None
+    f = s3.get(Config.Bucket+"/"+name)
+    cmd = "|".join(filters)
+    (pipein, pipeout) = os.popen2(cmd)
+    if os.fork() == 0:
+        shutil.copyfileobj(f, pipein)
+        sys.exit(0)
+    pipein.close()
+    return pipeout
+
 def reffiles(allowunencryptable):
     refsdir = s3.list(Config.Bucket, "?prefix=refs/")
     for r in [x['Key'] for x in refsdir['Contents']]:
@@ -438,11 +467,41 @@ def refresh():
 def restore(path):
     pass
 
+def verify():
+    print "Reading blobs"
+    blobdir = s3.list(Config.Bucket, "?prefix=blob/", callback = progress)
+    hashlen = hashlib.sha1().digest_size * 2
+    total = sum([int(x['Size']) for x in blobdir['Contents']])
+    done = 0 
+    for f in blobdir['Contents']:
+        if Config.Verbose:
+            print "reading", f['Key'], "(%s)" % f['Size']
+        data = getfile(f['Key'], True)
+        if data is not None:
+            h = hashlib.sha1()
+            while True:
+                buf = data.read(16384)
+                if len(buf) == 0:
+                    break
+                h.update(buf)
+            data.close()
+            hash = h.hexdigest()
+            if f['Key'][5:5+hashlen] != hash:
+                print "Hash verification error:", f['Key'], "actual", hash
+        done += int(f['Size'])
+        if sys.stdout.isatty():
+            sys.stdout.write("%3d%%\r" % int(100*done/total))
+            sys.stdout.flush()
+            if Config.Verbose:
+                print
+
 def usage():
     print >>sys.stderr, "Usage: shaback backup path"
     print >>sys.stderr, "       shaback fsck"
     print >>sys.stderr, "       shaback gc"
+    print >>sys.stderr, "       shaback refresh"
     print >>sys.stderr, "       shaback restore path"
+    print >>sys.stderr, "       shaback verify"
     sys.exit(1)
 
 if len(sys.argv) < 2:
@@ -518,6 +577,11 @@ elif command == "refresh":
 elif command == "restore":
     if len(args) == 1:
         restore(args[0])
+    else:
+        usage()
+elif command == "verify":
+    if len(args) == 0:
+        verify()
     else:
         usage()
 else:

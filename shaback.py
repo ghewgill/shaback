@@ -358,36 +358,7 @@ def getfile(name, allowunencryptable):
 def reffiles(allowunencryptable):
     refsdir = s3.list(Config.Bucket, "?prefix=refs/")
     for r in [x['Key'] for x in refsdir['Contents']]:
-        process = True
-        filters = []
-        for suffix in reversed(r.split(".")):
-            if suffix == "bz2":
-                filters.append("bunzip2")
-            elif suffix == "gpg":
-                if Config.Passphrase is None:
-                    print >>sys.stderr, "Encrypted index file found and no passphrase specified:", r
-                    if allowunencryptable:
-                        process = False
-                        break
-                    else:
-                        sys.exit(1)
-                # TODO: use --passphrase-fd
-                filters.append("gpg --decrypt --passphrase %s" % shellquote(Config.Passphrase))
-            else:
-                break
-        if not process:
-            continue
-        f = s3.get(Config.Bucket+"/"+r)
-        tfh, tfn = tempfile.mkstemp(prefix = "shaback.")
-        cmd = "|".join(filters) + ">" + shellquote(tfn)
-        p = os.popen(cmd, "wb")
-        try:
-            shutil.copyfileobj(f, p)
-            p.close()
-            yield (r, tfn)
-        finally:
-            os.close(tfh)
-            os.unlink(tfn)
+        yield (r, getfile(r, allowunencryptable))
 
 def fsck():
     print "Reading blobs"
@@ -398,15 +369,19 @@ def fsck():
     print "Reading refs"
     badrefs = set()
     badfiles = set()
-    for r, fn in reffiles(True):
+    for r, f in reffiles(True):
+        if f is None:
+            continue
         if Config.Verbose:
             print r
         try:
             files = []
-            xml.sax.parse(fn, RefsHandler(files))
+            xml.sax.parse(f, RefsHandler(files))
         except xml.sax.SAXException:
             print "Warning: failed to read refs file:", r
             continue
+        finally:
+            f.close()
         for fi in files:
             if fi.hash not in blobs:
                 print "Blob %s referenced from %s (%s) not found!" % (fi.hash, r, fi.name)
@@ -431,15 +406,17 @@ def gc():
     print "%d blobs found" % len(blobs)
     failedrefs = False
     print "Reading refs"
-    for r, fn in reffiles(False):
+    for r, f in reffiles(False):
         if Config.Verbose:
             print r
         try:
             files = []
-            xml.sax.parse(fn, RefsHandler(files))
+            xml.sax.parse(f, RefsHandler(files))
         except xml.sax.SAXException:
             failedrefs = True
             continue
+        finally:
+            f.close()
         for fi in files:
             if fi.hash in blobs:
                 del blobs[fi.hash]

@@ -323,6 +323,7 @@ def backup(path):
         fn += ".gpg"
         cmd += " | gpg --encrypt --no-armor -r " + Config.Encrypt
     if not Config.DryRun:
+        print "Uploading index"
         putpipe(fn, cmd, os.path.join(refpath, refname + timestamp + ".xml"))
         try:
             os.unlink(os.path.join(refpath, refname+".xml"))

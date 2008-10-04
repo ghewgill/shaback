@@ -174,7 +174,11 @@ def walktree(base, callback):
             print >>sys.stderr, "Error (%s): %s" % (e, path)
             continue
         if stat.S_ISDIR(st.st_mode):
-            walktree(path, callback)
+            if os.path.join(path, "*") in Config.Exclude:
+                if Config.Verbose:
+                    print "exclude", os.path.join(path, "*")
+            else:
+                walktree(path, callback)
         elif stat.S_ISREG(st.st_mode):
             callback(path, st)
         elif stat.S_ISLNK(st.st_mode):

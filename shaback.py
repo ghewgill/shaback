@@ -277,7 +277,7 @@ def backup(path):
     todo = [x for x in files if x.hash is not None and x.hash not in blobs]
     total = sum([x.size for x in todo])
     print "To upload: %d files, %d bytes" % (len(todo), total)
-    cachecount = 0
+    lastcachesavetime = time.time()
     done = 0
     for fi in todo:
         if Config.Verbose:
@@ -302,15 +302,14 @@ def backup(path):
             if not Config.DryRun:
                 putpipe(fn, cmd, fi.name)
         done += fi.size
-        cachecount += 1
-        if cachecount > 100:
+        if time.time() - lastcachesavetime >= 300:
             if not Config.DryRun:
                 if Config.Verbose:
                     print "Rewriting blobcache"
                 f = open(os.path.join(shabackpath, "blobcache"), "w")
                 cPickle.dump(blobs, f)
                 f.close()
-            cachecount = 0
+            lastcachesavetime = time.time()
         if sys.stdout.isatty():
             sys.stdout.write("%3d%%\r" % int(100*done/total))
             sys.stdout.flush()

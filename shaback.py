@@ -16,11 +16,14 @@ from xml.sax import saxutils
 sys.path.append("s3lib")
 import s3lib
 
+HASH_RE = re.compile(r"([0-9a-z]+)(.*)")
+
 class Config:
     def __init__(self):
         self.Bucket = None
         self.DryRun = False
         self.Encrypt = None
+        self.Hash = "sha1"
         self.Passphrase = None
         self.Verbose = False
         self.Exclude = []
@@ -55,7 +58,7 @@ def readConfig():
             f.close()
 
 def hashfile(fn, issymlink = False):
-    hash = hashlib.sha1()
+    hash = hashlib.new(Config.Hash)
     if issymlink:
         try:
             hash.update(os.readlink(fn))
@@ -368,8 +371,7 @@ def reffiles(allowunencryptable):
 def fsck():
     print "Reading blobs"
     blobdir = s3.list(Config.Bucket, "?prefix=blob/", callback = progress)
-    hashlen = hashlib.sha1().digest_size * 2
-    blobs = frozenset([x['Key'][5:5+hashlen] for x in blobdir['Contents']])
+    blobs = frozenset([HASH_RE.match(x['Key'][5:]).group(1) for x in blobdir['Contents']])
     print "%d blobs found" % len(blobs)
     print "Reading refs"
     badrefs = set()
@@ -406,8 +408,7 @@ def fsck():
 def gc():
     print "Reading blobs"
     blobdir = s3.list(Config.Bucket, "?prefix=blob/", callback = progress)
-    hashlen = hashlib.sha1().digest_size * 2
-    blobs = dict([(x['Key'][5:5+hashlen], x['Key']) for x in blobdir['Contents']])
+    blobs = dict([(HASH_RE.match(x['Key'][5:]).group(1), x['Key']) for x in blobdir['Contents']])
     print "%d blobs found" % len(blobs)
     failedrefs = False
     print "Reading refs"
@@ -437,8 +438,7 @@ def refresh():
     shabackpath = os.path.join(os.environ['HOME'], ".shaback")
     print "Reading blobs"
     blobdir = s3.list(Config.Bucket, "?prefix=blob/", callback = progress)
-    hashlen = hashlib.sha1().digest_size * 2
-    blobs = dict([(x['Key'][5:5+hashlen], x['Key'][5+hashlen:]) for x in blobdir['Contents']])
+    blobs = dict([(lambda m: (m.group(1), m.group(2)))(HASH_RE.match(x['Key'][5:])) for x in blobdir['Contents']])
     print "%d blobs found" % len(blobs)
     print "Writing blob cache"
     if not Config.DryRun:
@@ -452,7 +452,6 @@ def restore(path):
 def verify():
     print "Reading blobs"
     blobdir = s3.list(Config.Bucket, "?prefix=blob/", callback = progress)
-    hashlen = hashlib.sha1().digest_size * 2
     total = sum([int(x['Size']) for x in blobdir['Contents']])
     done = 0 
     for f in blobdir['Contents']:
@@ -460,7 +459,7 @@ def verify():
             print "reading", f['Key'], "(%s)" % f['Size']
         data = getfile(f['Key'], True)
         if data is not None:
-            h = hashlib.sha1()
+            h = hashlib.new(Config.hash)
             while True:
                 buf = data.read(16384)
                 if len(buf) == 0:
@@ -468,7 +467,7 @@ def verify():
                 h.update(buf)
             data.close()
             hash = h.hexdigest()
-            if f['Key'][5:5+hashlen] != hash:
+            if HASH_RE.match(f['Key'][5:]).group(1) != hash:
                 print "Hash verification error:", f['Key'], "actual", hash
         done += int(f['Size'])
         if sys.stdout.isatty():
@@ -510,6 +509,9 @@ while a < len(sys.argv):
         elif sys.argv[a] == "--encrypt":
             a += 1
             Config.Encrypt = sys.argv[a]
+        elif sys.argv[a] == "--hash":
+            a += 1
+            Config.Hash = sys.argv[a]
         elif sys.argv[a] == "--passphrase":
             a += 1
             Config.Passphrase = sys.argv[a]

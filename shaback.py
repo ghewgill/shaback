@@ -190,7 +190,7 @@ def walktree(base, callback):
             print "Skipping", path
 
 def progress(**args):
-    sys.stdout.write(" %d\r" % args['count'])
+    sys.stdout.write(" %d %s\r" % (args['count'], args['chunk'][-1]['Key']))
     sys.stdout.flush()
 
 def backup(path):

@@ -43,17 +43,27 @@ def readConfig():
     try:
         f = open(fn)
         for s in f:
-            m = re.match(r"(\w+)\s+(\S+)", s)
+            m = re.match(r"(\w+)(?:\s+(\S+))?", s)
             if m is None:
-                continue
+                print >>sys.stderr, "Unknown config line:", s
+                sys.exit(1)
             if m.group(1) == "bucket":
                 Config.Bucket = m.group(2)
+            elif m.group(1) == "dry-run":
+                Config.DryRun = True
+            elif m.group(1) == "encrypt":
+                Config.Encrypt = m.group(2)
+            elif m.group(1) == "hash":
+                Config.Hash = m.group(2)
+            elif m.group(1) == "verbose":
+                Config.Verbose = True
             elif m.group(1) == "exclude":
                 Config.Exclude.append(m.group(2))
             else:
-                continue
+                print >>sys.stderr, "Unknown config line:", s
+                sys.exit(1)
         f.close()
-    except:
+    finally:
         if f is not None:
             f.close()
 

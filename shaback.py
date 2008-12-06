@@ -43,6 +43,9 @@ def readConfig():
     try:
         f = open(fn)
         for s in f:
+            s = s.strip()
+            if len(s) == 0:
+                continue
             m = re.match(r"(\w+)(?:\s+(\S+))?", s)
             if m is None:
                 print >>sys.stderr, "Unknown config line:", s
